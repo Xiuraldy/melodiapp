@@ -4,6 +4,7 @@ import ProgramationsView from '../views/ProgramationsView.vue'
 import { useAuthStore } from '@/stores/auth'
 import SongsView from '@/views/SongsView.vue'
 import UsersView from '@/views/UsersView.vue'
+import ProgramationView from '@/views/ProgramationView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -18,6 +19,11 @@ const router = createRouter({
       name: 'programations',
       component: ProgramationsView,
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/programation/:id',
+      name: 'programation',
+      component: ProgramationView
     },
     {
       path: '/songs',

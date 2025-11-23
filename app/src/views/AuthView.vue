@@ -69,7 +69,6 @@ async function register() {
 }
 
 const activeLogin = ref(true);
-
 </script>
 
 <template>
