@@ -7,6 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	authroutes "melodiapp/cmd/app/routes/auth"
+	serviceroutes "melodiapp/cmd/app/routes/service"
+	songroutes "melodiapp/cmd/app/routes/song"
 	userroutes "melodiapp/cmd/app/routes/user"
 	"melodiapp/database"
 	"melodiapp/shared"
@@ -18,6 +20,8 @@ func NewRouter() *gin.Engine {
 
 	userroutes.AddUserRoutes(r)
 	authroutes.AddAuthRoutes(r)
+	serviceroutes.AddServiceRoutes(r)
+	songroutes.AddSongRoutes(r)
 
 	r.GET("/", func(c *gin.Context) {
 		tx := database.DBConn.Exec("SELECT 1")
