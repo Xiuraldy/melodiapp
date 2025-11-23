@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"trucode.app/api/database"
-	"trucode.app/api/models"
+	"melodiapp/database"
+	"melodiapp/models"
 )
 
 func Cors() gin.HandlerFunc {
