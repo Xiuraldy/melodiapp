@@ -45,9 +45,18 @@ func (s *Service) Register(input models.UserInput) (string, error) {
 	}
 
 	user := models.User{
-		Username: input.Username,
-		Email:    input.Email,
-		Password: input.Password,
+		Username:      input.Username,
+		Email:         input.Email,
+		Password:      input.Password,
+		Celphone:      input.Celphone,
+		Lastname:      input.Lastname,
+		SecondaryRole: input.SecondaryRole,
+	}
+
+	if input.Role != "" {
+		user.Role = input.Role
+	} else {
+		user.Role = "general"
 	}
 
 	if err := s.repo.CreateUser(&user); err != nil {
