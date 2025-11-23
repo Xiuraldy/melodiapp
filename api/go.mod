@@ -1,4 +1,4 @@
-module trucode.app/api
+module melodiapp
 
 go 1.22.5
 
