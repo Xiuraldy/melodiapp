@@ -17,7 +17,7 @@ type User struct {
 	Celphone          string    `json:"celphone"`
 	Role              string    `json:"role"`
 	Lastname          string    `json:"lastname"`
-	ProfilePictureURL string    `json:"profile_picture_url" gorm:"column:profile_picture_url"`
+	ProfilePictureUrl string    `json:"profile_picture_url"`
 	SecondaryRole     string    `json:"secondary_role" gorm:"column:secondary_role"`
 }
 

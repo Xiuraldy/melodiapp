@@ -1,26 +1,43 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { jwtDecode } from 'jwt-decode'
+
+const authStore = useAuthStore()
 
 // --- 1. INTERFACES ---
 interface User {
   id: number;
   username: string;
   lastname: string;
-  role: string;      
-  subRole: string;   
   email: string;
   celphone: string;
-  photo: string;
+  role: string;
+  secondary_role: string;
+  photo: string; 
 }
 
-// --- 2. VARIABLES Y STORE ---
-const authStore = useAuthStore()
+// --- 2. ESTADO ---
 const allUsers = ref<User[]>([])
 const isLoading = ref(true)
 const errorMsg = ref('')
 
-// --- 3. CARGAR TODOS LOS USUARIOS (GET) ---
+// Opciones
+const mainRoles = ['admin', 'general']
+const instrumentOptions = [
+  'Cantante', 'Guitarrista', 'Guitarrista Eléctrico', 
+  'Pianista', 'Saxofonista', 'Baterista', 'Bajista', 'Sonidista', 'Producción'
+]
+
+// --- HELPER URL FOTOS ---
+function getPhotoUrl(path: string) {
+  if (!path) return '/logo.png'; 
+  if (path.startsWith('http')) return path; 
+  if (path.startsWith('blob:')) return path; // Permitir previsualizaciones locales
+  return `http://localhost:8080${path}`;
+}
+
+// --- 3. CARGAR USUARIOS ---
 async function getUsers() {
   isLoading.value = true
   errorMsg.value = ''
@@ -29,21 +46,25 @@ async function getUsers() {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
+    
+    if (!response.ok) throw new Error('Error cargando usuarios')
+    
     const data = await response.json()
     
     allUsers.value = data.map((u: any) => ({
-      id: u.ID || u.id,
-      username: u.Username || u.username,
-      lastname: u.Lastname || u.lastname || '',
-      email: u.Email || u.email,
-      celphone: u.Celphone || u.celphone || '',
-      role: u.Role || u.role || 'General',
-      subRole: u.SubRole || u.subRole || 'Ninguno',
-      photo: '/logo.png'
+      id: u.id,
+      username: u.username,
+      lastname: u.lastname || '',
+      email: u.email,
+      celphone: u.celphone || '',
+      role: u.role || 'general',
+      secondary_role: u.secondary_role || '',
+      photo: getPhotoUrl(u.profile_picture_url) 
     }))
+
   } catch (e: any) {
     console.error(e)
-    errorMsg.value = 'Error cargando usuarios.'
+    errorMsg.value = 'No se pudo conectar con el servidor.'
   } finally {
     isLoading.value = false
   }
@@ -59,158 +80,188 @@ const filteredUsers = computed(() => {
   return allUsers.value.filter(user => 
     user.username.toLowerCase().includes(term) || 
     user.lastname.toLowerCase().includes(term) ||
-    user.subRole.toLowerCase().includes(term)
+    user.secondary_role.toLowerCase().includes(term)
   )
 })
 
-function getRoleEmoji(subRole: string) {
-  if (!subRole) return '👤'
-  const r = subRole.toLowerCase()
-  if (r.includes('cantante') || r.includes('voz')) return '🎤'
+function getRoleEmoji(secRole: string) {
+  if (!secRole) return '👤'
+  const r = secRole.toLowerCase()
+  if (r.includes('cantante')) return '🎤'
   if (r.includes('guitarra')) return '🎸'
-  if (r.includes('batería') || r.includes('bateria')) return '🥁'
-  if (r.includes('piano') || r.includes('teclado')) return '🎹'
+  if (r.includes('batería') || r.includes('baterista')) return '🥁'
+  if (r.includes('piano')) return '🎹'
   if (r.includes('bajo')) return '🎸'
-  if (r.includes('sonido') || r.includes('audio')) return '🎚'
+  if (r.includes('sonido')) return '🎚'
   return '🎵'
 }
 
-function deleteUser(id: number) {
-  if(confirm('¿Eliminar usuario localmente?')) {
-    allUsers.value = allUsers.value.filter(u => u.id !== id)
+function getMainRoleBadgeClass(role: string) {
+  return (role.toLowerCase() === 'admin' || role.toLowerCase() === 'administrador') ? 'admin' : 'general'
+}
+
+// --- 5. ELIMINAR ---
+async function deleteUser(id: number) {
+  if(confirm('¿Estás seguro de eliminar este usuario?')) {
+    try {
+      const response = await fetch(`http://localhost:8080/users/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${authStore.token}` }
+      })
+      if (!response.ok) throw new Error('Error al eliminar')
+      allUsers.value = allUsers.value.filter(u => u.id !== id)
+    } catch (e) {
+      alert('No se pudo eliminar el usuario')
+    }
   }
 }
 
-// Listas de opciones
-const mainRoles = ['Administrador', 'General']
-const instrumentRoles = ['Cantante', 'Guitarrista', 'Guitarrista Eléctrico', 'Baterista', 'Pianista', 'Bajista', 'Saxofonista', 'Sonidista', 'Líder de Alabanza', 'Ninguno']
-
-// --- 5. LÓGICA DE CREACIÓN (POST) ---
-const isCreateModalOpen = ref(false)
+// --- 6. CREAR Y EDITAR (MODIFICADO PARA FOTOS) ---
+const isModalOpen = ref(false)
 const isSaving = ref(false)
-const createError = ref('')
+const modalError = ref('')
+const isEditing = ref(false)
+const editingId = ref<number | null>(null)
 
-const initialForm = { username: '', lastname: '', email: '', password: '', celphone: '', role: '', subRole: '' }
-const newUserForm = reactive({ ...initialForm })
+// Variables para manejo de archivo
+const selectedFile = ref<File | null>(null)
+const previewUrl = ref<string | null>(null)
 
-function openCreateModal() { Object.assign(newUserForm, initialForm); createError.value = ''; isCreateModalOpen.value = true }
-function closeCreateModal() { isCreateModalOpen.value = false }
+const userForm = reactive({
+  username: '', lastname: '', email: '', password: '', celphone: '', role: 'general'
+})
+const selectedInstruments = ref<string[]>([])
 
-async function saveNewUser() {
-  isSaving.value = true
-  createError.value = ''
-  try {
-    const response = await fetch('http://localhost:8080/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authStore.token}` },
-      body: JSON.stringify(newUserForm)
-    })
-    const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Error al crear')
-    
-    await getUsers() 
-    closeCreateModal()
-  } catch (e: any) {
-    createError.value = e.message
-  } finally {
-    isSaving.value = false
-  }
+// ABRIR PARA CREAR
+function openCreateModal() {
+  isEditing.value = false
+  editingId.value = null
+  Object.assign(userForm, { username: '', lastname: '', email: '', password: '', celphone: '', role: 'general' })
+  selectedInstruments.value = [] 
+  
+  // Resetear foto
+  selectedFile.value = null
+  previewUrl.value = '/logo.png' // Imagen por defecto
+
+  modalError.value = ''
+  isModalOpen.value = true
 }
 
-// --- 6. LÓGICA DE EDICIÓN (PUT + GET/:id) ---
-const isEditModalOpen = ref(false)
-const editError = ref('')
-const editingUserId = ref<number | null>(null)
-
-const editUserForm = reactive({ 
-  username: '', lastname: '', email: '', password: '', celphone: '', role: '', subRole: '' 
-})
-
+// ABRIR PARA EDITAR
 async function openEditModal(id: number) {
-  isEditModalOpen.value = true
-  editError.value = ''
-  editingUserId.value = id
+  isEditing.value = true
+  editingId.value = id
+  modalError.value = ''
   
-  Object.assign(editUserForm, { username: 'Cargando...', lastname: '', email: '', celphone: '', role: '', subRole: '' })
+  // Resetear foto antes de cargar
+  selectedFile.value = null
+  previewUrl.value = null // Se llenará con la data del usuario
+  
+  isModalOpen.value = true
+
+  Object.assign(userForm, { username: 'Cargando...', lastname: '', email: '', password: '', celphone: '', role: '' })
+  selectedInstruments.value = []
 
   try {
     const response = await fetch(`http://localhost:8080/users/${id}`, {
-      method: 'GET',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authStore.token}` 
-      }
+       headers: { 'Authorization': `Bearer ${authStore.token}` }
     })
-
+    
     if (response.status === 401) {
-      alert('Tu sesión ha expirado.')
-      authStore.clearSession()
-      return
+       authStore.clearSession()
+       return
     }
-
-    if (!response.ok) throw new Error('No se pudo cargar el usuario')
-
+    if (!response.ok) throw new Error('Error cargando datos')
+    
     const data = await response.json()
 
-    editUserForm.username = data.Username || data.username
-    editUserForm.lastname = data.Lastname || data.lastname || ''
-    editUserForm.email = data.Email || data.email
-    editUserForm.celphone = data.Celphone || data.celphone || ''
-    editUserForm.role = data.Role || data.role
-    editUserForm.subRole = data.SubRole || data.subRole || ''
-    editUserForm.password = '' 
+    userForm.username = data.username
+    userForm.lastname = data.lastname
+    userForm.email = data.email
+    userForm.celphone = data.celphone
+    userForm.role = data.role
+    userForm.password = '' 
+    
+    // Cargar foto actual en el preview
+    previewUrl.value = getPhotoUrl(data.profile_picture_url)
 
-  } catch (e: any) {
+    if (data.secondary_role) {
+        selectedInstruments.value = data.secondary_role.split(',').map((s: string) => s.trim())
+    }
+
+  } catch (e) {
     console.error(e)
-    editError.value = 'Error de conexión: ' + e.message
+    modalError.value = 'No se pudo cargar la información'
   }
 }
 
-function closeEditModal() {
-  isEditModalOpen.value = false
-  editingUserId.value = null
+function closeModal() { isModalOpen.value = false }
+
+// NUEVO: Manejar selección de archivo
+function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (input.files && input.files[0]) {
+    const file = input.files[0];
+    selectedFile.value = file;
+    // Crear URL temporal para ver la foto seleccionada
+    previewUrl.value = URL.createObjectURL(file);
+  }
 }
 
-// --- AQUÍ ESTÁ LA CORRECCIÓN IMPORTANTE ---
-async function saveEditedUser() {
-  if (!editingUserId.value) return
+// GUARDAR (MODIFICADO PARA INCLUIR FILE)
+async function saveUser() {
   isSaving.value = true
-  editError.value = ''
+  modalError.value = ''
 
   try {
-    // 1. CREAMOS UNA COPIA DEL FORMULARIO
-    // Usamos 'any' temporalmente para poder borrar propiedades sin que TS se queje
-    const payload: any = { ...editUserForm }
+    if (!userForm.username || !userForm.email) throw new Error('Nombre y Email obligatorios')
+    if (!isEditing.value && !userForm.password) throw new Error('Contraseña obligatoria para nuevos usuarios')
 
-    // 2. SI LA CONTRASEÑA ESTÁ VACÍA, LA ELIMINAMOS DEL ENVÍO
-    // Esto evita que se envíe "password": "" y el backend lance error 400
-    if (!payload.password || payload.password.trim() === '') {
-      delete payload.password
+    const url = isEditing.value 
+      ? `http://localhost:8080/users/${editingId.value}`
+      : 'http://localhost:8080/users'
+    
+    const method = isEditing.value ? 'PUT' : 'POST'
+
+    // Usamos FormData para enviar texto + archivo binario
+    const formData = new FormData()
+    formData.append('username', userForm.username)
+    formData.append('lastname', userForm.lastname || '')
+    formData.append('email', userForm.email)
+    formData.append('celphone', userForm.celphone || '')
+    formData.append('role', userForm.role)
+    formData.append('secondary_role', selectedInstruments.value.join(','))
+
+    // Password solo si aplica
+    if (userForm.password && userForm.password.trim() !== '') {
+        formData.append('password', userForm.password)
     }
 
-    const response = await fetch(`http://localhost:8080/users/${editingUserId.value}`, {
-      method: 'PUT',
+    // ADJUNTAR LA FOTO SI SE SELECCIONÓ UNA NUEVA
+    if (selectedFile.value) {
+        formData.append('file', selectedFile.value) // El backend debe esperar "file"
+    }
+
+    const response = await fetch(url, {
+      method: method,
       headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${authStore.token}` 
+        'Authorization': `Bearer ${authStore.token}`
+        // IMPORTANTE: No pongas 'Content-Type': 'multipart/form-data' manual, fetch lo hace solo.
       },
-      // 3. ENVIAMOS EL PAYLOAD LIMPIO
-      body: JSON.stringify(payload)
+      body: formData 
     })
 
-    const data = await response.json()
-    
     if (!response.ok) {
-      // Si el backend devuelve error, mostramos el mensaje exacto
-      throw new Error(data.error || 'Error al editar')
+       const errData = await response.json().catch(() => ({}))
+       throw new Error(errData.error || 'Error al guardar cambios')
     }
 
-    await getUsers()
-    closeEditModal()
-
+    await getUsers() 
+    closeModal()
+    alert(isEditing.value ? 'Usuario actualizado con éxito' : 'Usuario creado con éxito')
+    
   } catch (e: any) {
-    console.error(e)
-    editError.value = e.message
+    modalError.value = e.message
   } finally {
     isSaving.value = false
   }
@@ -229,7 +280,7 @@ async function saveEditedUser() {
         <div class="header-actions">
            <div class="search-box">
               <span class="search-icon">🔍</span>
-              <input v-model="searchQuery" type="text" placeholder="Buscar por nombre o instrumento..." />
+              <input v-model="searchQuery" type="text" placeholder="Buscar por nombre o rol..." />
            </div>
            <button class="btn-create" @click="openCreateModal">
              + Nuevo Usuario
@@ -250,28 +301,43 @@ async function saveEditedUser() {
                <tr>
                   <th style="width: 70px;">Foto</th>
                   <th>Nombre Completo</th>
-                  <th>Rol / Instrumento</th>
+                  <th>Rol / Instrumentos</th>
                   <th>Contacto</th>
                   <th class="center-text">Acciones</th>
                </tr>
             </thead>
             <tbody>
                <tr v-for="user in filteredUsers" :key="user.id">
-                  <td><div class="avatar-wrapper"><img :src="user.photo" alt="avatar" class="avatar" /></div></td>
-                  <td><div class="info-stack"><span class="primary-text">{{ user.username }} {{ user.lastname }}</span></div></td>
+                  <td>
+                     <div class="avatar-wrapper">
+                        <img :src="user.photo" alt="avatar" class="avatar" />
+                     </div>
+                  </td>
+                  <td>
+                     <div class="info-stack">
+                        <span class="primary-text">{{ user.username }} {{ user.lastname }}</span>
+                        <span class="secondary-text user-id">ID: {{ user.id }}</span>
+                     </div>
+                  </td>
                   <td>
                      <div class="info-stack">
                         <div class="role-badge-wrapper">
-                           <span :class="['role-badge', user.role === 'Administrador' ? 'admin' : 'general']">
+                           <span class="role-badge" :class="getMainRoleBadgeClass(user.role)">
                               {{ user.role }}
                            </span>
                         </div>
-                        <span class="secondary-text subrole-text">
-                           {{ getRoleEmoji(user.subRole) }} {{ user.subRole }}
+                        <span v-if="user.secondary_role" class="secondary-text subrole-text">
+                           {{ getRoleEmoji(user.secondary_role) }} {{ user.secondary_role }}
                         </span>
+                        <span v-else class="text-muted">-</span>
                      </div>
                   </td>
-                  <td><div class="info-stack"><span class="contact-text email">✉ {{ user.email }}</span><span class="contact-text phone">📱 {{ user.celphone }}</span></div></td>
+                  <td>
+                     <div class="info-stack">
+                        <span class="contact-text email">✉ {{ user.email }}</span>
+                        <span class="contact-text phone">📱 {{ user.celphone }}</span>
+                     </div>
+                  </td>
                   <td class="center-text">
                      <div class="actions-row">
                         <button @click="openEditModal(user.id)" class="btn-action edit">✎</button>
@@ -281,98 +347,76 @@ async function saveEditedUser() {
                </tr>
             </tbody>
          </table>
+         <div v-if="!isLoading && filteredUsers.length === 0" class="empty-state">
+            No se encontraron usuarios.
+         </div>
       </div>
 
-      <div v-if="isCreateModalOpen" class="modal-overlay" @click.self="closeCreateModal">
+      <div v-if="isModalOpen" class="modal-overlay" @click.self="closeModal">
         <div class="modal-content form-modal">
-          <button class="close-btn" @click="closeCreateModal">×</button>
-          <div class="modal-header"><h3>Nuevo Usuario</h3><p>Registra un nuevo miembro</p></div>
-          <div v-if="createError" class="modal-error">{{ createError }}</div>
-
-          <form @submit.prevent="saveNewUser" class="user-form">
-            <div class="form-row">
-              <div class="form-group"><label>Nombre *</label><input v-model="newUserForm.username" type="text" required /></div>
-              <div class="form-group"><label>Apellido</label><input v-model="newUserForm.lastname" type="text" /></div>
-            </div>
-            <div class="form-row">
-              <div class="form-group"><label>Email *</label><input v-model="newUserForm.email" type="email" required /></div>
-              <div class="form-group"><label>Celular</label><input v-model="newUserForm.celphone" type="tel" /></div>
-            </div>
-            <div class="form-row">
-               <div class="form-group"><label>Contraseña *</label><input v-model="newUserForm.password" type="password" required /></div>
-               <div class="form-group"><label>Permisos *</label><select v-model="newUserForm.role" required><option v-for="r in mainRoles" :value="r">{{r}}</option></select></div>
-            </div>
-            <div class="form-row">
-               <div class="form-group full-width"><label>Instrumento *</label><select v-model="newUserForm.subRole" required><option v-for="i in instrumentRoles" :value="i">{{i}}</option></select></div>
-            </div>
-            <div class="form-actions">
-              <button type="button" class="btn-cancel" @click="closeCreateModal">Cancelar</button>
-              <button type="submit" class="btn-save" :disabled="isSaving">{{ isSaving ? '...' : 'Crear' }}</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div v-if="isEditModalOpen" class="modal-overlay" @click.self="closeEditModal">
-        <div class="modal-content form-modal">
-          <button class="close-btn" @click="closeEditModal">×</button>
+          <button class="close-btn" @click="closeModal">×</button>
           
           <div class="modal-header">
-            <h3>Editar Usuario</h3>
-            <p>Modifica los datos del miembro</p>
+            <h3>{{ isEditing ? 'Editar Usuario' : 'Nuevo Usuario' }}</h3>
+            <p>{{ isEditing ? 'Modifica los datos y foto de perfil' : 'Registra un nuevo miembro' }}</p>
           </div>
 
-          <div v-if="editError" class="modal-error">{{ editError }}</div>
+          <div v-if="modalError" class="modal-error">{{ modalError }}</div>
 
-          <form @submit.prevent="saveEditedUser" class="user-form">
-            <div class="form-row">
-              <div class="form-group">
-                <label>Nombre *</label>
-                <input v-model="editUserForm.username" type="text" required />
-              </div>
-              <div class="form-group">
-                <label>Apellido</label>
-                <input v-model="editUserForm.lastname" type="text" />
-              </div>
+          <form @submit.prevent="saveUser" class="user-form">
+            
+            <div class="photo-upload-section">
+                <div class="preview-container">
+                    <img :src="previewUrl || '/logo.png'" alt="Previsualización" class="modal-avatar">
+                </div>
+                <div class="upload-controls">
+                    <label class="btn-file">
+                        📷 Cambiar Foto
+                        <input type="file" accept="image/*" @change="onFileSelected" />
+                    </label>
+                    <span v-if="selectedFile" class="file-name">{{ selectedFile.name }}</span>
+                </div>
             </div>
-
             <div class="form-row">
-              <div class="form-group">
-                <label>Email *</label>
-                <input v-model="editUserForm.email" type="email" required />
-              </div>
-              <div class="form-group">
-                <label>Celular</label>
-                <input v-model="editUserForm.celphone" type="tel" />
-              </div>
+              <div class="form-group"><label>Nombre *</label><input v-model="userForm.username" type="text" required /></div>
+              <div class="form-group"><label>Apellido</label><input v-model="userForm.lastname" type="text" /></div>
             </div>
-
+            <div class="form-row">
+              <div class="form-group"><label>Email *</label><input v-model="userForm.email" type="email" required /></div>
+              <div class="form-group"><label>Celular</label><input v-model="userForm.celphone" type="tel" /></div>
+            </div>
             <div class="form-row">
                <div class="form-group">
-                <label>Contraseña</label>
-                <input v-model="editUserForm.password" type="password" placeholder="Dejar vacía para mantener" />
+                <label>Contraseña <span v-if="!isEditing">*</span></label>
+                <input 
+                  v-model="userForm.password" 
+                  type="password" 
+                  :required="!isEditing" 
+                  :placeholder="isEditing ? 'Dejar vacía para no cambiar' : 'Mínimo 6 caracteres'" 
+                />
               </div>
               <div class="form-group">
                 <label>Permisos *</label>
-                <select v-model="editUserForm.role" required>
-                  <option v-for="role in mainRoles" :key="role" :value="role">{{ role }}</option>
+                <select v-model="userForm.role" required>
+                  <option v-for="r in mainRoles" :key="r" :value="r">{{ r }}</option>
                 </select>
               </div>
             </div>
             
-            <div class="form-row">
-               <div class="form-group full-width">
-                <label>Instrumento *</label>
-                <select v-model="editUserForm.subRole" required>
-                  <option v-for="inst in instrumentRoles" :key="inst" :value="inst">{{ inst }}</option>
-                </select>
+            <div class="roles-section">
+              <label class="roles-label">Roles Musicales (Selecciona varios)</label>
+              <div class="checkbox-grid">
+                <label v-for="inst in instrumentOptions" :key="inst" class="checkbox-item" :class="{ 'checked': selectedInstruments.includes(inst) }">
+                  <input type="checkbox" :value="inst" v-model="selectedInstruments" />
+                  <span>{{ inst }}</span>
+                </label>
               </div>
             </div>
 
             <div class="form-actions">
-              <button type="button" class="btn-cancel" @click="closeEditModal" :disabled="isSaving">Cancelar</button>
+              <button type="button" class="btn-cancel" @click="closeModal">Cancelar</button>
               <button type="submit" class="btn-save" :disabled="isSaving">
-                {{ isSaving ? 'Guardando...' : 'Actualizar Usuario' }}
+                {{ isSaving ? 'Guardando...' : (isEditing ? 'Actualizar' : 'Crear') }}
               </button>
             </div>
           </form>
@@ -384,7 +428,7 @@ async function saveEditedUser() {
 </template>
 
 <style scoped>
-/* === ESTILOS COMPARTIDOS === */
+/* ESTILOS ORIGINALES + NUEVOS PARA LA FOTO EN MODAL */
 .programation { display: flex; flex-direction: column; padding: 40px; gap: 20px; }
 .view-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 20px; }
 h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
@@ -406,6 +450,7 @@ h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
 .info-stack { display: flex; flex-direction: column; justify-content: center; }
 .primary-text { font-weight: 700; color: #333; font-size: 0.95rem; }
 .secondary-text { font-size: 0.8rem; color: #888; margin-top: 2px; }
+.text-muted { color: #ddd; font-size: 0.8rem; }
 .contact-text { font-size: 0.85rem; color: #555; margin-bottom: 2px; }
 .contact-text.email { color: var(--color-secundary, #2c3e50); font-weight: 500; }
 .avatar-wrapper { position: relative; width: 45px; height: 45px; }
@@ -417,14 +462,12 @@ h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
 .btn-action.delete { background-color: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; }
 .error-banner { background-color: #fee2e2; color: #b91c1c; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
 .loading-text { color: #888; font-size: 0.9rem; font-style: italic; }
-
 .role-badge-wrapper { display: flex; }
 .role-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
 .role-badge.admin { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
 .role-badge.general { background-color: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; }
 .subrole-text { font-style: italic; color: #555; font-weight: 500; display: flex; align-items: center; gap: 5px; }
-
-/* MODAL */
+.user-id { font-family: monospace; color: #aaa; font-size: 0.7rem; }
 .modal-content.form-modal { max-width: 600px; width: 95%; }
 .user-form { display: flex; flex-direction: column; gap: 15px; margin-top: 10px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -445,5 +488,23 @@ h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
 .modal-header { text-align: center; margin-bottom: 20px; }
 .modal-header h3 { margin: 0; color: var(--color-secundary, #2c3e50); }
 .modal-header p { margin: 5px 0 0; color: #666; font-size: 0.9rem; }
+.roles-section { margin-top: 5px; }
+.roles-label { font-size: 0.85rem; color: #64748b; font-weight: 600; margin-bottom: 8px; display: block; }
+.checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.checkbox-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all 0.2s; background-color: #f8fafc; font-size: 0.85rem; color: #475569; }
+.checkbox-item:hover { background-color: #f1f5f9; }
+.checkbox-item.checked { background-color: #ecfdf5; border-color: #10b981; color: #065f46; font-weight: 600; }
+.checkbox-item input { display: none; }
+
+/* ESTILOS NUEVOS PARA LA CARGA DE FOTO */
+.photo-upload-section { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px dashed #eee; }
+.preview-container { width: 80px; height: 80px; border-radius: 50%; overflow: hidden; border: 2px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.modal-avatar { width: 100%; height: 100%; object-fit: cover; }
+.upload-controls { display: flex; flex-direction: column; gap: 5px; }
+.btn-file { background: #f3f4f6; border: 1px solid #d1d5db; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; color: #374151; font-weight: 600; text-align: center; transition: background 0.2s; }
+.btn-file:hover { background: #e5e7eb; }
+.btn-file input { display: none; }
+.file-name { font-size: 0.75rem; color: #6b7280; font-style: italic; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; gap: 10px; } .full-width { grid-column: span 1; } }
 </style>

@@ -1,3 +1,5 @@
 .env
 data
 trucodeLinux.*
+app/public/files/outfits/*
+app/node_modules/
