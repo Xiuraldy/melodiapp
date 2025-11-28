@@ -1,6 +1,8 @@
 package databaseadapter
 
 import (
+	"log"
+
 	"melodiapp/database"
 	"melodiapp/models"
 )
@@ -11,31 +13,44 @@ func NewGormServiceUserRepository() *GormServiceUserRepository {
 	return &GormServiceUserRepository{}
 }
 
-// AddUsers agrega usuarios al servicio, EVITANDO DUPLICADOS
+// AddUsers reemplaza completamente el equipo de un servicio:
+// 1) Elimina todas las filas existentes de service_users para ese serviceID
+// 2) Inserta únicamente los userIDs recibidos, con estado "pending" por defecto
 func (r *GormServiceUserRepository) AddUsers(serviceID uint, userIDs []uint) error {
-	for _, uid := range userIDs {
-		// 1. Verificar si ya existe la relación
-		var count int64
-		err := database.DBConn.Model(&models.ServiceUser{}).
-			Where("service_id = ? AND user_id = ?", serviceID, uid).
-			Count(&count).Error
+	log.Printf("[ServiceUserRepository] Replacing users for service %d with %+v", serviceID, userIDs)
 
-		if err != nil {
-			return err // Retorna si hubo error de conexión a la DB
-		}
+	tx := database.DBConn.Begin()
 
-		// 2. Si count es 0, significa que NO existe, entonces lo creamos
-		if count == 0 {
-			su := models.ServiceUser{
-				ServiceID: serviceID,
-				UserID:    uid,
-				Status:    "pending",
-			}
-			if err := database.DBConn.Create(&su).Error; err != nil {
-				return err
-			}
-		}
+	// Borrar asociaciones anteriores
+	res := tx.Where("service_id = ?", serviceID).Delete(&models.ServiceUser{})
+	if res.Error != nil {
+		log.Printf("[ServiceUserRepository] Error deleting existing users for service %d: %v", serviceID, res.Error)
+		tx.Rollback()
+		return res.Error
 	}
+	log.Printf("[ServiceUserRepository] Deleted %d existing service_users rows for service %d", res.RowsAffected, serviceID)
+
+	// Crear nuevas asociaciones
+	for _, uid := range userIDs {
+		su := models.ServiceUser{
+			ServiceID: serviceID,
+			UserID:    uid,
+			Status:    "pending",
+		}
+		if err := tx.Create(&su).Error; err != nil {
+			log.Printf("[ServiceUserRepository] Error creating service_user (service=%d, user=%d): %v", serviceID, uid, err)
+			tx.Rollback()
+			return err
+		}
+		log.Printf("[ServiceUserRepository] Inserted service_user (service=%d, user=%d)", serviceID, uid)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		log.Printf("[ServiceUserRepository] Error committing transaction for service %d: %v", serviceID, err)
+		return err
+	}
+
+	log.Printf("[ServiceUserRepository] Successfully replaced users for service %d", serviceID)
 	return nil
 }
 
