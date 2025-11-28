@@ -11,9 +11,9 @@ type Song struct {
 	TimeSignature string    `json:"time_signature" gorm:"column:time_signature"`
 	Duration      string    `json:"duration"`
 	Structure     string    `json:"structure" gorm:"column:structure"`
-	HasSequence   bool      `json:"has_sequence" gorm:"column:has_sequence"`
-	HasChart      bool      `json:"has_chart" gorm:"column:has_chart"`
-	HasScore      bool      `json:"has_score" gorm:"column:has_score"`
+	HasSequence   string    `json:"has_sequence" gorm:"column:has_sequence"`
+	HasChart      string    `json:"has_chart" gorm:"column:has_chart"`
+	HasScore      string    `json:"has_score" gorm:"column:has_score"`
 	YoutubeURL    string    `json:"youtube_url" gorm:"column:youtube_url"`
 	VoiceURL      string    `json:"voice_url" gorm:"column:voice_url"`
 	GuitarURL     string    `json:"guitar_url" gorm:"column:guitar_url"`

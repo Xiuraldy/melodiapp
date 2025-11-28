@@ -8,7 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 
+	"melodiapp/database"
 	userports "melodiapp/internal/ports/user"
 	"melodiapp/models"
 	"melodiapp/shared"
@@ -159,6 +161,7 @@ func (h *UserHandlers) CreateUser(c *gin.Context) {
 }
 
 func (h *UserHandlers) EditUser(c *gin.Context) {
+	// 1. VALIDACIÓN DE TOKEN (Tu lógica actual)
 	tokenStr := shared.GetTokenFromRequest(c)
 	token, err := jwt.ParseWithClaims(tokenStr, &shared.Payload{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -179,24 +182,93 @@ func (h *UserHandlers) EditUser(c *gin.Context) {
 		return
 	}
 
+	// 2. BUSCAR EL USUARIO A EDITAR
 	id := c.Param("id")
-	var updatedData models.User
-	if err := c.BindJSON(&updatedData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
-		return
-	}
-
-	updated, err := h.service.UpdateUser(id, &updatedData)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if updated == nil {
+	var user models.User
+	tx := database.DBConn.First(&user, id)
+	if tx.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully", "user": updated})
+	// 3. OBTENER DATOS DEL FORMULARIO (MULTIPART/FORM-DATA)
+	// Nota: Ya no usamos BindJSON porque vienen archivos
+
+	// --- Campos de Texto ---
+	username := c.PostForm("username")
+	lastname := c.PostForm("lastname")
+	email := c.PostForm("email")
+	celphone := c.PostForm("celphone")
+	role := c.PostForm("role")
+	secondaryRole := c.PostForm("secondary_role")
+	password := c.PostForm("password")
+
+	// Actualizar campos si vienen datos
+	if username != "" {
+		user.Username = username
+	}
+	if lastname != "" {
+		user.Lastname = lastname
+	}
+	if email != "" {
+		user.Email = email
+	}
+	if celphone != "" {
+		user.Celphone = celphone
+	}
+	if role != "" {
+		user.Role = role
+	}
+	if secondaryRole != "" {
+		user.SecondaryRole = secondaryRole
+	}
+
+	// --- Contraseña (Solo si se envía) ---
+	if password != "" {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+		user.Password = string(hashedPassword)
+	}
+
+	// --- 4. MANEJO DEL ARCHIVO (FOTO) ---
+	file, err := c.FormFile("profile_picture_file")
+	if err == nil {
+		// Si hay archivo, lo guardamos
+
+		// Asegurar que el directorio existe
+		uploadDir := "public/profiles"
+		if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+			os.MkdirAll(uploadDir, 0755)
+		}
+
+		// Crear nombre único: profile_{id}_{originalName}
+		filename := fmt.Sprintf("profile_%s_%s", id, file.Filename)
+		filepath := fmt.Sprintf("%s/%s", uploadDir, filename)
+
+		// Guardar en disco
+		if err := c.SaveUploadedFile(file, filepath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+			return
+		}
+
+		// Actualizar la URL en la base de datos
+		// La ruta web será /files/profiles/... (dependiendo de cómo sirvas los estáticos)
+		user.ProfilePictureUrl = fmt.Sprintf("/files/profiles/%s", filename)
+	}
+
+	// 5. GUARDAR CAMBIOS EN BD
+	if err := database.DBConn.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "User updated successfully",
+		"user":    user,
+	})
 }
 
 func (h *UserHandlers) DeleteUser(c *gin.Context) {

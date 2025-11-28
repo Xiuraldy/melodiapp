@@ -18,6 +18,8 @@ func NewRouter() *gin.Engine {
 	r := gin.Default()
 	r.Use(shared.Cors())
 
+	r.Static("/files", "./public")
+
 	userroutes.AddUserRoutes(r)
 	authroutes.AddAuthRoutes(r)
 	serviceroutes.AddServiceRoutes(r)
