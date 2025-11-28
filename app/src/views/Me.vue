@@ -149,7 +149,7 @@ async function saveProfile() {
     }
 
     if (selectedPhotoFile.value) {
-      formData.append('profile_picture_file', selectedPhotoFile.value)
+      formData.append('file', selectedPhotoFile.value)
     }
 
     const response = await fetch(`http://localhost:8080/users/${user.value.id}`, {

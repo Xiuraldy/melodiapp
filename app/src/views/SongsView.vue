@@ -320,8 +320,23 @@ async function saveNewSong() {
           <tr v-for="song in filteredSongs" :key="song.id">
             <td class="center-text"><div class="key-badge">{{ song.key }}</div></td>
             <td><div class="info-stack"><span class="primary-text">{{ song.name }}</span><span class="secondary-text">{{ song.author }}</span></div></td>
-            <td><div class="resource-actions"><a v-if="song.youtubeUrl" :href="song.youtubeUrl" target="_blank" class="btn-icon youtube">▶</a><a v-if="song.sequenceUrl" :href="getLocalPath('sequences', 'sequence', song.id, 'mp3')" target="_blank" class="btn-icon sequence" title="Secuencia">🎧</a><a v-if="song.chartUrl" :href="getLocalPath('charts', 'chart', song.id, 'pdf')" target="_blank" class="btn-icon chart" title="Cifrado">📄</a><a v-if="song.scoreUrl" :href="getLocalPath('scores', 'score', song.id, 'pdf')" target="_blank" class="btn-icon score" title="Partitura">🎼</a></div></td>
-            <td><div class="resource-actions"><a v-if="song.voiceUrl" :href="getLocalPath('tracks', 'voice', song.id, 'mp3')" target="_blank" class="btn-icon voice" title="Voz">🎤</a><a v-if="song.pianoUrl" :href="getLocalPath('tracks', 'piano', song.id, 'mp3')" target="_blank" class="btn-icon piano" title="Piano">🎹</a><a v-if="song.guitarUrl" :href="getLocalPath('tracks', 'guitar', song.id, 'mp3')" target="_blank" class="btn-icon guitar" title="Guitarra">🎸</a><a v-if="song.bassUrl" :href="getLocalPath('tracks', 'bass', song.id, 'mp3')" target="_blank" class="btn-icon bass" title="Bajo">🎸</a><a v-if="song.drumsUrl" :href="getLocalPath('tracks', 'drums', song.id, 'mp3')" target="_blank" class="btn-icon drums" title="Batería">🥁</a></div></td>
+            <td>
+              <div class="resource-actions">
+                <a v-if="song.youtubeUrl" :href="song.youtubeUrl" target="_blank" class="btn-icon youtube">▶</a>
+                <a v-if="song.sequenceUrl" :href="song.sequenceUrl" target="_blank" class="btn-icon sequence" title="Secuencia">🎧</a>
+                <a v-if="song.chartUrl" :href="song.chartUrl" target="_blank" class="btn-icon chart" title="Cifrado">📄</a>
+                <a v-if="song.scoreUrl" :href="song.scoreUrl" target="_blank" class="btn-icon score" title="Partitura">🎼</a>
+              </div>
+            </td>
+            <td>
+              <div class="resource-actions">
+                <a v-if="song.voiceUrl" :href="song.voiceUrl" target="_blank" class="btn-icon voice" title="Voz">🎤</a>
+                <a v-if="song.pianoUrl" :href="song.pianoUrl" target="_blank" class="btn-icon piano" title="Piano">🎹</a>
+                <a v-if="song.guitarUrl" :href="song.guitarUrl" target="_blank" class="btn-icon guitar" title="Guitarra">🎸</a>
+                <a v-if="song.bassUrl" :href="song.bassUrl" target="_blank" class="btn-icon bass" title="Bajo">🎸</a>
+                <a v-if="song.drumsUrl" :href="song.drumsUrl" target="_blank" class="btn-icon drums" title="Batería">🥁</a>
+              </div>
+            </td>
             <td class="center-text"><button v-if="song.structure && song.structure.length > 0" @click="openStructureModal(song)" class="btn-structure">Ver</button><span v-else class="text-muted">-</span></td>
             <td class="center-text bpm-cell">{{ song.bpm }}</td>
             <td class="center-text time-sig-cell">{{ song.timeSignature }}</td>
@@ -353,11 +368,47 @@ async function saveNewSong() {
           <div class="structure-builder-section"><label class="form-label">Estructura</label><div class="structure-buttons"><button type="button" v-for="part in structureOptions" :key="part" class="badge-btn" @click="addStructurePart(part)">+ {{ part }}</button></div><div class="structure-preview"><div v-if="structureBuilder.length === 0" class="preview-placeholder">Selecciona partes...</div><div v-else class="preview-chips"><div v-for="(part, index) in structureBuilder" :key="index" class="struct-chip">{{ part }} <span class="remove-x" @click="removeStructurePart(index)">×</span></div></div></div></div>
           <div class="form-row"><div class="form-group full-width"><label>Youtube URL</label><input v-model="newSongForm.youtube_url" type="url" /></div></div>
           <div class="form-section-title">Archivos</div>
-          <div class="form-row"><div class="form-group"><label>Secuencia</label><input type="file" @change="handleResourceFile($event, 'sequence_url')" /></div><div class="form-group"><label>Cifrado</label><input type="file" @change="handleResourceFile($event, 'chart_url')" /></div><div class="form-group"><label>Partitura</label><input type="file" @change="handleResourceFile($event, 'score_url')" /></div></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Secuencia</label>
+              <input v-model="newSongForm.sequence_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+            <div class="form-group">
+              <label>Cifrado</label>
+              <input v-model="newSongForm.chart_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+            <div class="form-group">
+              <label>Partitura</label>
+              <input v-model="newSongForm.score_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+          </div>
           <div class="form-section-title">Tracks</div>
-          <div class="form-row"><div class="form-group"><label>Voz</label><input type="file" @change="handleFileName($event, 'voice_url')" /></div><div class="form-group"><label>Piano</label><input type="file" @change="handleFileName($event, 'piano_url')" /></div></div>
-          <div class="form-row"><div class="form-group"><label>Guitarra</label><input type="file" @change="handleFileName($event, 'guitar_url')" /></div><div class="form-group"><label>Bajo</label><input type="file" @change="handleFileName($event, 'bass_url')" /></div></div>
-          <div class="form-row"><div class="form-group"><label>Batería</label><input type="file" @change="handleFileName($event, 'drums_url')" /></div></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Voz</label>
+              <input v-model="newSongForm.voice_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+            <div class="form-group">
+              <label>Piano</label>
+              <input v-model="newSongForm.piano_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Guitarra</label>
+              <input v-model="newSongForm.guitar_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+            <div class="form-group">
+              <label>Bajo</label>
+              <input v-model="newSongForm.bass_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Batería</label>
+              <input v-model="newSongForm.drums_url" type="text" placeholder="Nombre de archivo o URL" />
+            </div>
+          </div>
           <div class="form-actions"><button type="button" class="btn-cancel" @click="closeCreateModal">Cancelar</button><button type="submit" class="btn-save" :disabled="isSaving">Guardar</button></div>
         </form>
       </div>
@@ -417,7 +468,7 @@ h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
 .error-banner { background-color: #fee2e2; color: #b91c1c; padding: 10px; border-radius: 8px; margin-bottom: 15px; text-align: center; }
 .loading-text { color: #888; font-size: 0.9rem; font-style: italic; }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-.modal-content.form-modal { max-width: 650px; width: 95%; max-height: 90vh; overflow-y: auto; }
+.modal-content.form-modal { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; animation: slideUp 0.3s ease-out; width: 95%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
 .modal-content { background: white; padding: 30px; border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; animation: slideUp 0.3s ease-out; }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .close-btn { position: absolute; top: 15px; right: 20px; background: none; border: none; font-size: 2rem; color: #999; cursor: pointer; }
@@ -442,7 +493,17 @@ h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
 .remove-x { cursor: pointer; font-weight: bold; opacity: 0.7; }
 .remove-x:hover { opacity: 1; }
 .form-section-title { font-weight: 700; color: var(--color-secundary, #2c3e50); border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 15px; font-size: 0.9rem; }
+.user-form { display: flex; flex-direction: column; gap: 15px; margin-top: 10px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.full-width { grid-column: span 2; } 
+.form-group { display: flex; flex-direction: column; gap: 6px; width: 100%;} 
+.form-group label { font-size: 0.85rem; font-weight: 600; color: #4b5563; }
+.form-group input, .form-group select { padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 0.95rem; outline: none; background-color: #f9fafb; font-family: inherit; width: 100%; box-sizing: border-box;}
+.form-group input:focus, .form-group select:focus { border-color: var(--color-secundary, #2c3e50); background-color: white; box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1); }
 .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 20px; }
+.btn-cancel { background: white; border: 1px solid #d1d5db; color: #4b5563; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-save { background: var(--color-secundary, #2c3e50); border: none; color: white; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+.btn-save:disabled { opacity: 0.7; cursor: not-allowed; }
 .resources-checks { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
 .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #4b5563; cursor: pointer; }
 

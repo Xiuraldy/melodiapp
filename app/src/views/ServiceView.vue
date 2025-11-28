@@ -79,11 +79,11 @@ const errorMsg = ref('')
 const isModalOpen = ref(false) // Modal estructura
 const isOutfitModalOpen = ref(false) // Modal outfits
 
-// Helper para convertir links
+// Helper para convertir links de archivos
 function getFileLink(fileName: string, folder: string) {
-    if (!fileName || fileName === '#') return '#'
-    if (fileName.startsWith('http')) return fileName
-    return `http://localhost:8080/files/${folder}/${fileName}`
+  if (!fileName || fileName === '#') return '#'
+  if (fileName.startsWith('http')) return fileName
+  return `http://localhost:8080/files/${folder}/${fileName}`
 }
 
 // --- 4. CARGAR SERVICIO ---
@@ -132,9 +132,9 @@ async function getServiceDetail() {
             hasChart: s.has_chart,
             hasScore: s.has_score,
             youtubeUrl: s.youtube_url,
-            sequenceUrl: s.sequence_url || (s.has_sequence === 'true' ? `sequence${s.id}.mp3` : ''), 
-            chartUrl: s.chart_url || (s.has_chart === 'true' ? `chart${s.id}.pdf` : ''),
-            scoreUrl: s.score_url || (s.has_score === 'true' ? `score${s.id}.pdf` : ''),
+            sequenceUrl: s.sequence_url || s.has_sequence || '',
+            chartUrl: s.chart_url || s.has_chart || '',
+            scoreUrl: s.score_url || s.has_score || '',
             voiceUrl: s.voice_url || '',
             guitarUrl: s.guitar_url || '',
             pianoUrl: s.piano_url || '',

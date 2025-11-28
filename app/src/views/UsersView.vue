@@ -468,7 +468,7 @@ h1 { margin: 0; color: var(--color-secundary, #2c3e50); font-size: 1.5rem; }
 .role-badge.general { background-color: #eff6ff; color: #1e40af; border: 1px solid #dbeafe; }
 .subrole-text { font-style: italic; color: #555; font-weight: 500; display: flex; align-items: center; gap: 5px; }
 .user-id { font-family: monospace; color: #aaa; font-size: 0.7rem; }
-.modal-content.form-modal { max-width: 600px; width: 95%; }
+.modal-content.form-modal { max-width: 600px; width: 95%; max-height: 90vh; overflow-y: auto; }
 .user-form { display: flex; flex-direction: column; gap: 15px; margin-top: 10px; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .full-width { grid-column: span 2; } 
