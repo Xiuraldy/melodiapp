@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"melodiapp/database"
 	userports "melodiapp/internal/ports/user"
@@ -145,10 +144,47 @@ func (h *UserHandlers) GetUserById(c *gin.Context) {
 }
 
 func (h *UserHandlers) CreateUser(c *gin.Context) {
-	var user models.User
-	if err := c.BindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
+	// Crear usuario a partir de campos de formulario (multipart/form-data)
+	username := c.PostForm("username")
+	lastname := c.PostForm("lastname")
+	email := c.PostForm("email")
+	celphone := c.PostForm("celphone")
+	role := c.PostForm("role")
+	secondaryRole := c.PostForm("secondary_role")
+	password := c.PostForm("password")
+
+	if username == "" || email == "" || password == "" || role == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username, email, password y role son obligatorios"})
 		return
+	}
+
+	user := models.User{
+		Username:      username,
+		Lastname:      lastname,
+		Email:         email,
+		Celphone:      celphone,
+		Role:          role,
+		SecondaryRole: secondaryRole,
+		Password:      password,
+	}
+
+	// Manejar archivo de foto opcional
+	file, err := c.FormFile("file")
+	if err == nil {
+		uploadDir := "public/profiles"
+		if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+			os.MkdirAll(uploadDir, 0755)
+		}
+
+		filename := fmt.Sprintf("profile_%d_%s", time.Now().UnixNano(), file.Filename)
+		filepath := fmt.Sprintf("%s/%s", uploadDir, filename)
+
+		if err := c.SaveUploadedFile(file, filepath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save image"})
+			return
+		}
+
+		user.ProfilePictureUrl = fmt.Sprintf("/files/profiles/%s", filename)
 	}
 
 	created, err := h.service.CreateUser(&user)
@@ -224,17 +260,15 @@ func (h *UserHandlers) EditUser(c *gin.Context) {
 	}
 
 	// --- Contraseña (Solo si se envía) ---
+	// Asignamos la nueva contraseña en texto plano y dejamos que los hooks de GORM
+	// (BeforeUpdate) se encarguen de hashearla si realmente cambió.
 	if password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-			return
-		}
-		user.Password = string(hashedPassword)
+		user.Password = password
 	}
 
 	// --- 4. MANEJO DEL ARCHIVO (FOTO) ---
-	file, err := c.FormFile("profile_picture_file")
+	// El frontend envía el archivo en el campo "file"
+	file, err := c.FormFile("file")
 	if err == nil {
 		// Si hay archivo, lo guardamos
 

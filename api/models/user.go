@@ -31,11 +31,25 @@ type UserInput struct {
 	SecondaryRole string `json:"secondary_role"`
 }
 
-func (user *User) BeforeSave(*gorm.DB) error {
+func hashPassword(user *User) error {
+	if user.Password == "" {
+		return nil
+	}
 	passwordHashed, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 	user.Password = string(passwordHashed)
+	return nil
+}
+
+func (user *User) BeforeCreate(*gorm.DB) error {
+	return hashPassword(user)
+}
+
+func (user *User) BeforeUpdate(tx *gorm.DB) error {
+	if tx.Statement.Changed("Password") {
+		return hashPassword(user)
+	}
 	return nil
 }
